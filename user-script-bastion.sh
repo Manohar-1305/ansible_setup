@@ -119,12 +119,13 @@ for client_node in "${clients[@]}"; do
 done
 
 log "Updated inventory.ini file successfully at $INVENTORY_FILE"
+# Update entries for Clients
 log "Updating controlplane section in sequence"
 update_entry "client" "client3" "${client_ips[client3]}"
 update_entry "client" "client2" "${client_ips[client2]}"
 update_entry "client" "client1" "${client_ips[client1]}"
 
-# Update entries for bastion and NFS
+# Update entries for Controller
 update_entry "controller" "Ansible_Controller" "$ansible_controller"
 
 log "Script execution completed successfully"
