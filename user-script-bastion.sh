@@ -1,14 +1,8 @@
 #!/bin/bash
 
-LOG_FILE="$(pwd)/ansible_setup.log" # Log file in the same directory where the script is run
+LOG_FILE="$(pwd)/ansible_setup.log"
 
-exec > >(tee -a "$LOG_FILE") 2>&1 # Redirect stdout and stderr to the log file
-
-sudo su -
-
-user_name="ansible-user"
-user_home="/home/$user_name"
-user_ssh_dir="$user_home/.ssh"
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 log() {
   local message="$1"
@@ -17,24 +11,19 @@ log() {
 
 log "Starting Ansible Controller Setup"
 
+user_name="ansible-user"
+user_home="/home/$user_name"
+user_ssh_dir="$user_home/.ssh"
+
 # Check if user already exists
 if id "$user_name" &>/dev/null; then
   log "User $user_name already exists."
-  exit 1
+else
+  log "Creating user: $user_name"
+  sudo adduser --disabled-password --gecos "" "$user_name"
+  log "User $user_name is created successfully"
+  echo "$user_name ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$user_name
 fi
-
-# Create a user
-log "Creating user: $user_name"
-sudo adduser --disabled-password --gecos "" "$user_name"
-
-log "User $user_name is created successfully"
-
-# Add user to sudoer group
-echo "$user_name ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$user_name
-
-# Switch to user from root
-log "Switching to user: $user_name"
-su - $user_name
 
 # Install AWS CLI
 log "Installing AWS CLI"
@@ -48,37 +37,35 @@ sudo apt update -y
 sudo apt install ansible -y
 
 log "Creating SSH directory for $user_name"
-mkdir -p $user_ssh_dir
-chmod 700 $user_ssh_dir
+sudo mkdir -p "$user_ssh_dir"
+sudo chmod 700 "$user_ssh_dir"
+sudo chown -R "$user_name:$user_name" "$user_home"
 
 # Generate SSH key
 if [ ! -f "$user_ssh_dir/id_rsa" ]; then
   log "Generating SSH key for $user_name"
-  ssh-keygen -t rsa -b 4096 -f $user_ssh_dir/id_rsa -N ""
+  sudo -u "$user_name" ssh-keygen -t rsa -b 4096 -f "$user_ssh_dir/id_rsa" -N ""
 fi
 
-chown -R $user_name:$user_name $user_home
-
 log "Uploading SSH key to S3"
-aws s3 cp $user_ssh_dir/id_rsa.pub s3://my-key/server.pub
+aws s3 cp "$user_ssh_dir/id_rsa.pub" s3://my-key/server.pub
 
-# Login into user
-user_name="ansible-user"
-user_home="/home/$user_name"
-user_ssh_dir="$user_home/.ssh"
+# Download SSH key from S3
 ssh_key_path="$user_ssh_dir/authorized_keys"
-
-mkdir -p $user_ssh_dir
-chmod 700 $user_ssh_dir
-
 log "Downloading SSH key from S3"
-aws s3 cp s3://my-key/server.pub $ssh_key_path
-chmod 600 $ssh_key_path
-chown -R $user_name:$user_name $user_home
+aws s3 cp s3://my-key/server.pub "$ssh_key_path"
+chmod 600 "$ssh_key_path"
+chown -R "$user_name:$user_name" "$user_home"
 
 export AWS_REGION=ap-south-1
+log "Ansible Controller Setup Completed"
 
-# Function to update or add entries in inventory
+log "Ansible setup script completed successfully."
+
+GIT_REPO="https://github.com/Manohar-1305/ansible_setup.git"
+GIT_DIR="$HOME/ansible-user/ansible_setup"
+INVENTORY_FILE="$GIT_DIR/ansible/inventories/inventory.ini"
+
 update_entry() {
   local section=$1
   local host=$2
@@ -99,12 +86,6 @@ update_entry() {
   sudo sed -i "/^\[$section\]/a $host ansible_host=$ip" "$INVENTORY_FILE"
 }
 
-# Check if the inventory file exists
-if [ ! -f "$INVENTORY_FILE" ]; then
-  log "Inventory file not found: $INVENTORY_FILE"
-  exit 1
-fi
-
 # Fetch the Ansible Controller public IP
 log "Fetching Ansible Controller IP"
 ansible_controller=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=ansible_controller" --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
@@ -115,8 +96,6 @@ if [ -z "$ansible_controller" ]; then
 fi
 log "Ansible Controller IP: $ansible_controller"
 
-sleep 90
-
 # Define client nodes
 clients=("ansible_client_1" "ansible_client_2" "ansible_client_3")
 
@@ -125,8 +104,10 @@ declare -A client_ips
 for client_node in "${clients[@]}"; do
   log "Fetching IP for $client_node"
 
+  export AWS_REGION="ap-south-1"
+
   # Fetch IP address from AWS
-  ip=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=$client_node" --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
+  ip=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=$client_node" --query "Reservations[*].Instances[*].PrivateIpAddress" --output text)
 
   # Check if IP retrieval was successful
   if [[ -n "$ip" ]]; then
@@ -137,4 +118,4 @@ for client_node in "${clients[@]}"; do
   fi
 done
 
-log "Ansible setup script completed successfully."
+log "Updated inventory.ini file successfully at $INVENTORY_FILE"
