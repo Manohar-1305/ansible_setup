@@ -104,12 +104,13 @@ if ! grep -q "^\[client\]" "$INVENTORY_FILE"; then
   log "Adding [client] section"
   echo -e "\n[client]" | sudo tee -a "$INVENTORY_FILE" >/dev/null
 fi
-
+sleep 90
 # Define and update client nodes
 clients=("ansible_client_1" "ansible_client_2" "ansible_client_3")
 
 for client_node in "${clients[@]}"; do
   log "Fetching IP for $client_node"
+  
 
   ip=$(aws ec2 describe-instances --region "ap-south-1" --filters "Name=tag:Name,Values=$client_node" --query "Reservations[*].Instances[*].PrivateIpAddress" --output text)
 
