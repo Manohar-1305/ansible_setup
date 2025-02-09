@@ -1,5 +1,5 @@
 #!/bin/bash
-
+sleep 30
 # Define variables
 log_file="/var/log/user_setup.log"
 user_name="ansible-user"
