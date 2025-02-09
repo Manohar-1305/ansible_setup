@@ -1,7 +1,8 @@
 #!/bin/bash
 sleep 30
+
 # Define variables
-log_file="/var/log/user_setup.log"
+log_file="$(pwd)/user_setup.log"  # Log file in the current working directory
 user_name="ansible-user"
 user_home="/home/$user_name"
 user_ssh_dir="$user_home/.ssh"
@@ -9,7 +10,7 @@ ssh_key_path="$user_ssh_dir/authorized_keys"
 
 # Function to log messages
 log() {
-  echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" | sudo tee -a "$log_file"
+  echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" | tee -a "$log_file"
 }
 
 log "Starting user setup script."
@@ -43,7 +44,8 @@ else
 fi
 
 # Fetch and copy SSH public key from S3
-if sudo aws s3 cp s3://my-key/server.pub "$ssh_key_path" >> "$log_file" 2>&1; then
+if aws s3 cp s3://my-key/server.pub /tmp/server.pub >> "$log_file" 2>&1; then
+  sudo mv /tmp/server.pub "$ssh_key_path"
   sudo chmod 600 "$ssh_key_path"
   sudo chown -R "$user_name:$user_name" "$user_home"
   log "SSH public key fetched and configured successfully."
