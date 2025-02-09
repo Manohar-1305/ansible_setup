@@ -67,27 +67,17 @@ git clone https://github.com/Manohar-1305/ansible_setup.git
 
 INVENTORY_FILE="/home/ansible-user/ansible_setup/ansible/inventories/inventory.ini"
 
-update_entry() {
-  local section=$1
-  local host=$2
-  local ip=$3
-
-  log "Updating inventory entry: [$section] $host ansible_host=$ip"
-
-  # Ensure the section exists
-  if ! grep -q "^\[$section\]" "$INVENTORY_FILE"; then
-    log "Section $section not found. Adding section header."
-    echo -e "\n[$section]" | sudo tee -a "$INVENTORY_FILE" > /dev/null
-  fi
-
-  # Remove existing entry if it exists
-  sudo sed -i "/^\[$section\]/,/^\[/{/^$host ansible_host=/d}" "$INVENTORY_FILE"
-
-  # Add or update the entry
-  echo "$host ansible_host=$ip" | sudo tee -a "$INVENTORY_FILE" > /dev/null
+log() {
+  echo "$(date +"%Y-%m-%d %H:%M:%S") - $1"
 }
 
-# Fetch the Ansible Controller public IP
+# Ensure inventory file exists
+if [ ! -f "$INVENTORY_FILE" ]; then
+  log "Inventory file not found. Creating it."
+  sudo touch "$INVENTORY_FILE"
+fi
+
+# Fetch Ansible Controller Public IP
 log "Fetching Ansible Controller IP"
 ansible_controller=$(aws ec2 describe-instances --region "ap-south-1" --filters "Name=tag:Name,Values=ansible_controller" --query "Reservations[*].Instances[*].PublicIpAddress" --output text)
 
@@ -97,37 +87,41 @@ if [ -z "$ansible_controller" ]; then
 fi
 log "Ansible Controller IP: $ansible_controller"
 
-# Define client nodes
+# Remove old Ansible_Controller entries to avoid duplication
+sudo sed -i "/Ansible_Controller ansible_host=/d" "$INVENTORY_FILE"
+
+# Ensure [controller] section exists and add Ansible_Controller under it
+if ! grep -q "^\[controller\]" "$INVENTORY_FILE"; then
+  log "Adding [controller] section"
+  echo -e "\n[controller]" | sudo tee -a "$INVENTORY_FILE" >/dev/null
+fi
+
+# Add Ansible_Controller under [controller]
+sudo sed -i "/^\[controller\]/a Ansible_Controller ansible_host=$ansible_controller" "$INVENTORY_FILE"
+
+# Ensure [client] section exists
+if ! grep -q "^\[client\]" "$INVENTORY_FILE"; then
+  log "Adding [client] section"
+  echo -e "\n[client]" | sudo tee -a "$INVENTORY_FILE" >/dev/null
+fi
+
+# Define and update client nodes
 clients=("ansible_client_1" "ansible_client_2" "ansible_client_3")
 
-# Fetch and update IPs for clients
-declare -A client_ips
 for client_node in "${clients[@]}"; do
   log "Fetching IP for $client_node"
 
   ip=$(aws ec2 describe-instances --region "ap-south-1" --filters "Name=tag:Name,Values=$client_node" --query "Reservations[*].Instances[*].PrivateIpAddress" --output text)
 
   if [[ -n "$ip" ]]; then
-    client_ips["$client_node"]="$ip"
     log "IP for $client_node: $ip"
+
+    # Remove old entry for this client
+    sudo sed -i "/$client_node ansible_host=/d" "$INVENTORY_FILE"
+
+    # Append client under [client]
+    sudo sed -i "/^\[client\]/a $client_node ansible_host=$ip" "$INVENTORY_FILE"
   else
     log "Failed to fetch IP for $client_node"
   fi
 done
-# Ensure section exists
-if ! grep -q "\[client\]" "$INVENTORY_FILE"; then
-    echo -e "\n[client]" >> "$INVENTORY_FILE"
-fi
-
-# Update or add clients
-sed -i "/\[client\]/a ansible_client_3 ansible_host=10.20.5.94" "$INVENTORY_FILE"
-sed -i "/\[client\]/a ansible_client_2 ansible_host=10.20.5.207" "$INVENTORY_FILE"
-sed -i "/\[client\]/a ansible_client_1 ansible_host=10.20.5.36" "$INVENTORY_FILE"
-
-# Ensure controller section exists
-if ! grep -q "\[controller\]" "$INVENTORY_FILE"; then
-    echo -e "\n[controller]" >> "$INVENTORY_FILE"
-fi
-
-# Update or add controller
-sed -i "/\[controller\]/a Ansible_Controller ansible_host=3.109.181.214" "$INVENTORY_FILE"
