@@ -22,18 +22,25 @@ else
   log "Creating user: $user_name"
   sudo adduser --disabled-password --gecos "" "$user_name"
   log "User $user_name is created successfully"
+  log "Granting sudo privileges to $user_name"
   echo "$user_name ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$user_name
 fi
 
 # Install AWS CLI
-log "Installing AWS CLI"
+log "Updating package lists"
 sudo apt update -y
+
+log "Installing AWS CLI"
 sudo apt-get install -y awscli
 
 # Install Ansible
-log "Installing Ansible"
+log "Adding Ansible repository"
 sudo apt-add-repository ppa:ansible/ansible -y
+
+log "Updating package lists after adding Ansible repo"
 sudo apt update -y
+
+log "Installing Ansible"
 sudo apt install ansible -y
 
 log "Creating SSH directory for $user_name"
@@ -56,6 +63,8 @@ aws s3 cp "$user_ssh_dir/id_rsa.pub" s3://my-key/server.pub
 ssh_key_path="$user_ssh_dir/authorized_keys"
 log "Downloading SSH key from S3"
 aws s3 cp s3://my-key/server.pub "$ssh_key_path"
+
+log "Setting permissions for SSH keys"
 chmod 600 "$ssh_key_path"
 chown -R "$user_name:$user_name" "$user_home"
 
@@ -85,20 +94,21 @@ fi
 log "Ansible Controller IP: $ansible_controller"
 
 # Remove old Ansible_Controller entries to avoid duplication
+log "Removing old Ansible_Controller entries from inventory"
 sudo sed -i "/Ansible_Controller ansible_host=/d" "$INVENTORY_FILE"
 
 # Ensure [controller] section exists and add Ansible_Controller under it
 if ! grep -q "^\[controller\]" "$INVENTORY_FILE"; then
-  log "Adding [controller] section"
+  log "Adding [controller] section to inventory"
   echo -e "\n[controller]" | sudo tee -a "$INVENTORY_FILE" >/dev/null
 fi
 
-# Add Ansible_Controller under [controller]
+log "Adding Ansible_Controller entry to inventory"
 sudo sed -i "/^\[controller\]/a Ansible_Controller ansible_host=$ansible_controller" "$INVENTORY_FILE"
 
 # Ensure [client] section exists
 if ! grep -q "^\[client\]" "$INVENTORY_FILE"; then
-  log "Adding [client] section"
+  log "Adding [client] section to inventory"
   echo -e "\n[client]" | sudo tee -a "$INVENTORY_FILE" >/dev/null
 fi
 
@@ -117,9 +127,11 @@ for client_node in "${clients[@]}"; do
     log "IP for $client_node: $ip"
 
     # Remove old entry for this client
+    log "Removing old entry for $client_node"
     sudo sed -i "/$client_node ansible_host=/d" "$INVENTORY_FILE"
 
     # Append client under [client]
+    log "Adding $client_node to inventory"
     sudo sed -i "/^\[client\]/a $client_node ansible_host=$ip" "$INVENTORY_FILE"
   else
     log "Failed to fetch IP for $client_node"
