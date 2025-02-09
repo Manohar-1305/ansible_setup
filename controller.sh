@@ -45,6 +45,8 @@ sudo chown -R "$user_name:$user_name" "$user_home"
 if [ ! -f "$user_ssh_dir/id_rsa" ]; then
   log "Generating SSH key for $user_name"
   sudo -u "$user_name" ssh-keygen -t rsa -b 4096 -f "$user_ssh_dir/id_rsa" -N ""
+else
+  log "SSH key already exists, skipping key generation."
 fi
 
 log "Uploading SSH key to S3"
@@ -61,15 +63,10 @@ export AWS_REGION=ap-south-1
 
 log "Ansible Controller Setup Completed"
 
-log "Ansible setup script completed successfully."
-echo "Cloning the Repo"
+log "Cloning the repository"
 git clone https://github.com/Manohar-1305/ansible_setup.git
 
 INVENTORY_FILE="/home/ansible-user/ansible_setup/ansible/inventories/inventory.ini"
-
-log() {
-  echo "$(date +"%Y-%m-%d %H:%M:%S") - $1"
-}
 
 # Ensure inventory file exists
 if [ ! -f "$INVENTORY_FILE" ]; then
@@ -104,14 +101,16 @@ if ! grep -q "^\[client\]" "$INVENTORY_FILE"; then
   log "Adding [client] section"
   echo -e "\n[client]" | sudo tee -a "$INVENTORY_FILE" >/dev/null
 fi
+
+# Wait for instances to be ready
+log "Waiting for 90 seconds before fetching client IPs..."
 sleep 90
+
 # Define and update client nodes
 clients=("ansible_client_1" "ansible_client_2" "ansible_client_3")
 
 for client_node in "${clients[@]}"; do
   log "Fetching IP for $client_node"
-  
-
   ip=$(aws ec2 describe-instances --region "ap-south-1" --filters "Name=tag:Name,Values=$client_node" --query "Reservations[*].Instances[*].PrivateIpAddress" --output text)
 
   if [[ -n "$ip" ]]; then
@@ -126,3 +125,5 @@ for client_node in "${clients[@]}"; do
     log "Failed to fetch IP for $client_node"
   fi
 done
+
+log "Ansible setup script completed successfully."
