@@ -20,7 +20,7 @@ echo "User $user_name is created succesfully"
 # add user to sudoer group
 echo "ansible-user ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/ansible-user
 
-# Switch to user from rot
+# Switch to user from root
 su - ansible-user
 
 # install awscli
@@ -61,9 +61,9 @@ cd
 # Navigate to home directory and log a message
 cd $user_home && echo "correct till this step" >>main-data.log 2>&1
 
-git clone "https://github.com/Manohar-1305/ansible_playbook_k8s-installation.git"
+git clone "https://github.com/Manohar-1305/ansible_setup.git"
 
-INVENTORY_FILE="ansible_playbook_k8s-installation/ansible/inventories/inventory.ini"
+INVENTORY_FILE="ansible_setup/ansible/inventories/inventory.ini"
 
 LOG_FILE="ansible_script.log"
 
