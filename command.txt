@@ -1,0 +1,4 @@
+terraform init
+terraform plan
+terraform apply auto-approve
+ansible-playbook -i ansible_setup/ansible/inventories/inventory.ini ping.yaml --ssh-extra-args="-o StrictHostKeyChecking=no"
